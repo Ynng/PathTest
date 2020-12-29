@@ -494,8 +494,8 @@ int main()
 	}
 	plt::plot(xr, yr, "go--");
 
-	std::vector<Pos2d> path = withPath(rawPath);
-	std::vector<Pos2d> quinticPath = withQuinticPath(rawPath);
+	std::vector<Pos2d> path = withPathBezier(rawPath);
+	std::vector<Pos2d> quinticPath = withPathQuintic(rawPath);
 
 	n = path.size();
 	std::vector<double> x(1), y(1), c(1), v(1);
