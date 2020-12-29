@@ -243,11 +243,11 @@ public:
 };
 
 double minVel=5;
-double maxAccel=50;
+double maxAccel=60;
 double maxVel=45;
-double maxDecel=15;
+double maxDecel=40;
 double finalVel=1;
-double k=1;
+double k=10;
 
 std::vector<Pos2d> quinticSegment(Pos2d s, Pos2d g, int steps, bool end) {
 	std::vector<double> rx;
@@ -329,7 +329,7 @@ void computeVelocity(std::vector<Pos2d>& ipath) {
 	}
 }
 
-std::vector<Pos2d> withSplinePath(std::vector<Pos2d> ipath, int steps = 30, double slopeScalar = 0.8) {
+std::vector<Pos2d> withPathQuintic(std::vector<Pos2d> ipath, int steps = 50, double slopeScalar = 0.8) {
 	//calculating angles
 	ipath[0].setData("theta", angleBetweenPointsSpline(ipath[0], ipath[1]));
 	for (size_t i = 1; i < ipath.size()-1; i++)
@@ -377,8 +377,8 @@ std::vector<Pos2d> withSplinePath(std::vector<Pos2d> ipath, int steps = 30, doub
 	return path;
 }
 
-std::vector<Pos2d> withPath(std::vector<Pos2d> ipath) {
-	double resolution = 0.01;
+std::vector<Pos2d> withPathBezier(std::vector<Pos2d> ipath) {
+	double resolution = 0.75;
 	double iweight = 0.001;
 	double iTolerance = 1e-9;
 	//generating path
@@ -482,8 +482,9 @@ int main()
 {
 	plt::figure_size(700, 700);
 	
-	//std::vector<Pos2d> rawPath = { {0,0} , {24,0}, {24, 24} };
-	std::vector<Pos2d> rawPath = { {24,72} , {24,108},  {36,144}};
+	//std::vector<Pos2d> rawPath = { {24,72} , {24,108},  {36,144}, {72, 120}, {72, 96}, {48, 72} };
+	std::vector<Pos2d> rawPath = { {0,0} , {24,24},  {26,-24}, {48,0} };
+	//std::vector<Pos2d> rawPath = { {24,72} , {24,108},  {36,144}};
 	int n = rawPath.size();
 	std::vector<double> xr(n), yr(n);
 	for (int i = 0; i < rawPath.size(); i++)
@@ -493,7 +494,9 @@ int main()
 	}
 	plt::plot(xr, yr, "go--");
 
-	std::vector<Pos2d> path = withSplinePath(rawPath);
+	std::vector<Pos2d> path = withPath(rawPath);
+	std::vector<Pos2d> quinticPath = withQuinticPath(rawPath);
+
 	n = path.size();
 	std::vector<double> x(1), y(1), c(1), v(1);
 
@@ -506,6 +509,17 @@ int main()
 		plt::scatter(x, y, 20, { {"color", perc2multcolor(v[0], minVel, maxVel)} });
 		printf("%d:\t%.2f %.2f\t%.2f\t|\t%s\n", i, x[0], y[0], v[0], perc2multcolor(v[0], minVel, maxVel));
 	}
+
+	for (int i = 0; i < quinticPath.size(); i++)
+	{
+		x[0] = quinticPath[i].x;
+		y[0] = quinticPath[i].y;
+		c[0] = quinticPath[i].getData<double>("curvature");
+		v[0] = quinticPath[i].getData<double>("velocity");
+		plt::scatter(x, y, 20, { {"color", perc2multcolor(v[0], minVel, maxVel)} });
+		printf("%d:\t%.2f %.2f\t%.2f\t|\t%s\n", i, x[0], y[0], v[0], perc2multcolor(v[0], minVel, maxVel));
+	}
+
 	plt::axis("equal");
 	plt::show();
 }
