@@ -20,6 +20,10 @@ namespace plt = matplotlibcpp;
 #define M_PI 3.14159265358979323846
 #endif
 
+double wrapAngle(double angle) {
+	return angle - (M_PI * 2) * std::floor((angle + M_PI) / (M_PI * 2));
+}
+
 class Pos2d
 {
 private:
@@ -213,6 +217,48 @@ const std::any& Pos2d::getID(const std::string& iid) const {
 	}
 }
 
+struct ChassisPos : public Pos2d
+{
+public:
+	double angle = 0; // radians
+	ChassisPos();
+	ChassisPos(double x, double y, double angle);
+	Pos2d getClosestPointOnHeading(Pos2d target);
+	double getAngleToAsHeading(Pos2d target);
+};
+
+/*-----ChassisSpeed-------*/
+ChassisPos::ChassisPos() {
+	x = 0;
+	y = 0;
+	angle = 0;
+}
+
+ChassisPos::ChassisPos(double ix, double iy, double iangle) {
+	x = ix;
+	y = iy;
+	angle = iangle;
+}
+
+Pos2d ChassisPos::getClosestPointOnHeading(Pos2d target) {
+	//https://www.desmos.com/calculator/zmtgmmzvxf
+	Pos2d heading = { cos(angle), sin(angle) };
+	Pos2d cur = { x,y };
+	Pos2d diff = target - cur;
+	double d = diff.x * heading.x + diff.y * heading.y;
+	return { x + heading.x * d, y + heading.y * d };
+}
+
+double ChassisPos::getAngleToAsHeading(Pos2d target) {
+	//https://www.desmos.com/calculator/fznrm419ja
+	double diffAngle = atan2(target.y - y, target.x - x) - angle;
+	return wrapAngle(diffAngle);
+}
+
+typedef ChassisPos ChassisSpeed;
+typedef ChassisPos ChassisPosition;
+typedef ChassisPos State;
+
 class QuinticPolynomial {
 private:
 	double coeffs[6];
@@ -249,16 +295,16 @@ double maxDecel=40;
 double finalVel=1;
 double k=10;
 
-std::vector<Pos2d> quinticSegment(Pos2d s, Pos2d g, int steps, bool end) {
+std::vector<Pos2d> quinticSegment(State s, State g, int steps, bool end) {
 	std::vector<double> rx;
 	std::vector<double> ry;
 	rx.reserve(end ? steps + 1 : steps);
 	ry.reserve(end ? steps + 1 : steps);
 
-	double vxs = s.getData<double>("vel") * sin(s.getData<double>("theta"));
-	double vys = s.getData<double>("vel") * cos(s.getData<double>("theta"));
-	double vxg = g.getData<double>("vel") * sin(g.getData<double>("theta"));
-	double vyg = g.getData<double>("vel") * cos(g.getData<double>("theta"));
+	double vxs = s.getData<double>("vel") * cos(-s.angle);
+	double vys = s.getData<double>("vel") * sin(s.angle);
+	double vxg = g.getData<double>("vel") * cos(-g.angle);
+	double vyg = g.getData<double>("vel") * sin(g.angle);
 
 	QuinticPolynomial xqp = QuinticPolynomial(s.x, vxs, g.x, vxg);
 	QuinticPolynomial yqp = QuinticPolynomial(s.y, vys, g.y, vyg);
@@ -278,13 +324,9 @@ std::vector<Pos2d> quinticSegment(Pos2d s, Pos2d g, int steps, bool end) {
 	return path;
 }
 
-double wrapAngle(double angle) {
-	return angle - (M_PI * 2) * std::floor((angle + M_PI) / (M_PI * 2));
-};
-
 double angleBetweenPointsSpline(Pos2d current, Pos2d target) {
-	//return wrapAngle(atan2(target.y - current.y, target.x - current.x));
-	return wrapAngle(atan2(target.x - current.x, target.y - current.y));
+	return wrapAngle(atan2(target.y - current.y, target.x - current.x));
+	//return wrapAngle(atan2(target.x - current.x, target.y - current.y));
 }
 
 void computeCurvature(std::vector<Pos2d>& ipath) {
@@ -329,14 +371,19 @@ void computeVelocity(std::vector<Pos2d>& ipath) {
 	}
 }
 
-std::vector<Pos2d> withPathQuintic(std::vector<Pos2d> ipath, int steps = 50, double slopeScalar = 0.8) {
+#define AUTO 12312312
+
+std::vector<Pos2d> withPathQuintic(std::vector<State> ipath, int steps = 40, double slopeScalar = 0.8) {
 	//calculating angles
-	ipath[0].setData("theta", angleBetweenPointsSpline(ipath[0], ipath[1]));
+	if (ipath[0].angle == AUTO)
+		ipath[0].angle = angleBetweenPointsSpline(ipath[0], ipath[1]);
 	for (size_t i = 1; i < ipath.size()-1; i++)
 	{
-		ipath[i].setData("theta", angleBetweenPointsSpline(ipath[i-1], ipath[i+1]));
+		if (ipath[i].angle == AUTO)
+			ipath[i].angle = angleBetweenPointsSpline(ipath[i-1], ipath[i+1]);
 	}
-	ipath[ipath.size()-1].setData("theta", angleBetweenPointsSpline(ipath[ipath.size() - 2], ipath[ipath.size() - 1]));
+	if (ipath[ipath.size() - 1].angle == AUTO)
+		ipath[ipath.size()-1].angle = angleBetweenPointsSpline(ipath[ipath.size() - 2], ipath[ipath.size() - 1]);
 	
 
 	//generating velocities
@@ -351,9 +398,8 @@ std::vector<Pos2d> withPathQuintic(std::vector<Pos2d> ipath, int steps = 50, dou
 
 	//debuggin
 	for (size_t i = 0; i < ipath.size(); i++) {
-		printf("theta: %.2f\n", ipath[i].getData<double>("theta"));
+		printf("angle: %.2f\n", ipath[i].angle);
 	}
-
 
 	//generating path
 	std::vector<Pos2d> path(0);
@@ -483,7 +529,7 @@ int main()
 	plt::figure_size(700, 700);
 	
 	//std::vector<Pos2d> rawPath = { {24,72} , {24,108},  {36,144}, {72, 120}, {72, 96}, {48, 72} };
-	std::vector<Pos2d> rawPath = { {0,0} , {24,24},  {26,-24}, {48,0} };
+	std::vector<State> rawPath = { {0,0, 0} , {24,10, M_PI / 2}, {24,24, M_PI / 2},  {0,60, AUTO}, {-16,88, AUTO} };
 	//std::vector<Pos2d> rawPath = { {24,72} , {24,108},  {36,144}};
 	int n = rawPath.size();
 	std::vector<double> xr(n), yr(n);
@@ -494,13 +540,13 @@ int main()
 	}
 	plt::plot(xr, yr, "go--");
 
-	std::vector<Pos2d> path = withPathBezier(rawPath);
-	std::vector<Pos2d> quinticPath = withPathQuintic(rawPath);
+	//std::vector<Pos2d> path = withPathBezier(rawPath);
+	std::vector<Pos2d> quinticPath = withPathQuintic(rawPath, 40, 0.8);
 
-	n = path.size();
+	//n = path.size();
 	std::vector<double> x(1), y(1), c(1), v(1);
 
-	for (int i = 0; i < path.size(); i++)
+	/*for (int i = 0; i < path.size(); i++)
 	{
 		x[0] = path[i].x;
 		y[0] = path[i].y;
@@ -508,7 +554,7 @@ int main()
 		v[0] = path[i].getData<double>("velocity");
 		plt::scatter(x, y, 20, { {"color", perc2multcolor(v[0], minVel, maxVel)} });
 		printf("%d:\t%.2f %.2f\t%.2f\t|\t%s\n", i, x[0], y[0], v[0], perc2multcolor(v[0], minVel, maxVel));
-	}
+	}*/
 
 	for (int i = 0; i < quinticPath.size(); i++)
 	{
